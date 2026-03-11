@@ -1,61 +1,60 @@
+import streamlit as st
 import yfinance as yf
 import pandas as pd
-from datetime import datetime
 
-def validate_date(date_text):
-    """檢查日期格式是否為 YYYY-MM-DD"""
-    try:
-        datetime.strptime(date_text, '%Y-%m-%d')
-        return True
-    except ValueError:
-        return False
+# 設定網頁標題
+st.set_page_config(page_title="台/美股價查詢工具", layout="centered")
 
-def run_stock_query():
-    print("="*30)
-    print("📊 簡易台/美股價查詢工具")
-    print("="*30)
+st.title("📊 簡易台/美股價查詢工具")
+st.write("請在下方輸入資訊進行查詢")
+
+# 1. 建立側邊欄或主頁面的輸入欄位
+with st.container():
+    stock_id = st.text_input("請輸入股票代號", value="2330.TW", help="美股如 AAPL, 台股如 2330.TW")
     
-    # 1. 取得使用者輸入
-    ticker = input("請輸入股票代號 (美股如 AAPL, 台股如 2330.TW): ").strip().upper()
-    start_date = input("請輸入開始日期 (YYYY-MM-DD): ").strip()
-    end_date = input("請輸入結束日期 (YYYY-MM-DD): ").strip()
+    col1, col2 = st.columns(2)
+    with col1:
+        start_date = st.date_input("開始日期", value=pd.to_datetime("2024-01-01"))
+    with col2:
+        end_date = st.date_input("結束日期", value=pd.to_datetime("today"))
 
-    # 2. 驗證日期格式
-    if not (validate_date(start_date) and validate_date(end_date)):
-        print("\n❌ 錯誤：日期格式不正確，請使用 YYYY-MM-DD (例如 2024-01-01)")
-        return
+    query_button = st.button("🔍 開始查詢")
 
-    # 3. 下載數據
-    print(f"\n🚀 正在從 Yahoo Finance 抓取 {ticker} 的資料...")
+# 2. 執行查詢邏輯
+if query_button:
     try:
-        # auto_adjust=True 會自動處理除權息後的調整股價
-        data = yf.download(ticker, start=start_date, end=end_date)
-
+        with st.spinner('正在抓取資料中...'):
+            data = yf.download(stock_id, start=start_date, end=end_date)
+        
         if data.empty:
-            print(f"⚠️ 找不到 '{ticker}' 的資料。請檢查代號是否正確，或該時段是否為交易日。")
+            st.warning(f"⚠️ 找不到 '{stock_id}' 的資料。請檢查代號是否正確。")
         else:
-            # 4. 格式化輸出
-            print("\n" + "查詢結果摘要".center(40, "-"))
-            # 顯示最後五筆資料，讓使用者看到最新動態
-            print(data.tail()) 
-            print("-" * 46)
+            st.success(f"✅ 已成功抓取 {stock_id} 的數據！")
             
-            # 計算簡單統計
-            low_price = data['Low'].min()
-            high_price = data['High'].max()
-            print(f"📈 期間最高價: {high_price:.2f}")
-            print(f"📉 期間最低價: {low_price:.2f}")
+            # 顯示統計數據
+            col_a, col_b = st.columns(2)
+            col_a.metric("期間最高價", f"{data['High'].max().item():.2f}")
+            col_b.metric("期間最低價", f"{data['Low'].min().item():.2f}")
             
-            # 問使用者是否要存檔
-            save_csv = input("\n是否要將結果存為 CSV 檔案？(y/n): ").lower()
-            if save_csv == 'y':
-                filename = f"{ticker}_{start_date}_to_{end_date}.csv"
-                data.to_csv(filename)
-                print(f"✅ 檔案已儲存為: {filename}")
+            # 顯示數據表格
+            st.subheader("數據預覽 (最後五筆)")
+            st.dataframe(data.tail())
+            
+            # 下載 CSV 按鈕
+            csv = data.to_csv().encode('utf-8')
+            st.download_button(
+                label="📥 下載資料為 CSV",
+                data=csv,
+                file_name=f"{stock_id}_price.csv",
+                mime='text/csv',
+            )
+            
+            # 畫個簡單的折線圖
+            st.subheader("股價走勢圖")
+            st.line_chart(data['Close'])
 
     except Exception as e:
-        print(f"💥 發生未知錯誤: {e}")
+        st.error(f"💥 發生錯誤: {e}")
 
-if __name__ == "__main__":
-    run_stock_query()
-    print("\n查詢結束，謝謝使用！")
+st.divider()
+st.caption("數據來源：Yahoo Finance")
