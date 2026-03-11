@@ -2,59 +2,59 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 
-# 設定網頁標題
-st.set_page_config(page_title="台/美股價查詢工具", layout="centered")
+st.set_page_config(page_title="台/美股價查詢工具", layout="wide")
 
-st.title("📊 簡易台/美股價查詢工具")
-st.write("請在下方輸入資訊進行查詢")
+st.title("📊 完整版股價查詢工具")
 
-# 1. 建立側邊欄或主頁面的輸入欄位
-with st.container():
-    stock_id = st.text_input("請輸入股票代號", value="2330.TW", help="美股如 AAPL, 台股如 2330.TW")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        start_date = st.date_input("開始日期", value=pd.to_datetime("2024-01-01"))
-    with col2:
-        end_date = st.date_input("結束日期", value=pd.to_datetime("today"))
+# 側邊欄設定
+with st.sidebar:
+    st.header("查詢參數")
+    stock_id = st.text_input("股票代號", value="2330.TW")
+    start_date = st.date_input("開始日期", value=pd.to_datetime("2024-01-01"))
+    end_date = st.date_input("結束日期", value=pd.to_datetime("today"))
+    show_all = st.checkbox("顯示完整數據表格", value=False)
+    query_button = st.button("🚀 執行查詢")
 
-    query_button = st.button("🔍 開始查詢")
-
-# 2. 執行查詢邏輯
 if query_button:
     try:
-        with st.spinner('正在抓取資料中...'):
-            data = yf.download(stock_id, start=start_date, end=end_date)
+        # 下載數據
+        data = yf.download(stock_id, start=start_date, end=end_date)
         
         if data.empty:
-            st.warning(f"⚠️ 找不到 '{stock_id}' 的資料。請檢查代號是否正確。")
+            st.error("❌ 找不到資料，請確認代號或日期。")
         else:
-            st.success(f"✅ 已成功抓取 {stock_id} 的數據！")
+            # 確保索引是日期格式
+            data.index = pd.to_datetime(data.index)
             
-            # 顯示統計數據
-            col_a, col_b = st.columns(2)
-            col_a.metric("期間最高價", f"{data['High'].max().item():.2f}")
-            col_b.metric("期間最低價", f"{data['Low'].min().item():.2f}")
+            # 1. 數據摘要 (Metrics)
+            col1, col2, col3 = st.columns(3)
+            latest_price = data['Close'].iloc[-1].item()
+            max_price = data['High'].max().item()
+            min_price = data['Low'].min().item()
             
-            # 顯示數據表格
-            st.subheader("數據預覽 (最後五筆)")
-            st.dataframe(data.tail())
-            
-            # 下載 CSV 按鈕
-            csv = data.to_csv().encode('utf-8')
-            st.download_button(
-                label="📥 下載資料為 CSV",
-                data=csv,
-                file_name=f"{stock_id}_price.csv",
-                mime='text/csv',
-            )
-            
-            # 畫個簡單的折線圖
-            st.subheader("股價走勢圖")
+            col1.metric("最新收盤價", f"{latest_price:.2f}")
+            col2.metric("期間最高價", f"{max_price:.2f}")
+            col3.metric("期間最低價", f"{min_price:.2f}")
+
+            # 2. 股價走勢圖 (強制繪製)
+            st.subheader("📈 股價走勢圖 (收盤價)")
+            # 這裡我們只取 Close 欄位來畫圖
             st.line_chart(data['Close'])
 
-    except Exception as e:
-        st.error(f"💥 發生錯誤: {e}")
+            # 3. 數據表格
+            st.subheader("📅 數據清單")
+            if show_all:
+                st.dataframe(data) # 顯示全部
+            else:
+                st.write("目前顯示最後 10 筆數據 (勾選左側可看全部)：")
+                st.dataframe(data.tail(10))
 
-st.divider()
-st.caption("數據來源：Yahoo Finance")
+            # 4. 下載功能
+            csv = data.to_csv().encode('utf-8')
+            st.download_button("📥 下載完整 CSV 報表", csv, f"{stock_id}.csv", "text/csv")
+
+    except Exception as e:
+        if "Too Many Requests" in str(e):
+            st.error("⚠️ 請求太頻繁了！Yahoo Finance 暫時拒絕連線，請等幾分鐘再試。")
+        else:
+            st.error(f"發生錯誤: {e}")
